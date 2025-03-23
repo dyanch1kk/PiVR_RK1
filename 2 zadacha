@@ -1,0 +1,101 @@
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <queue>
+#include <semaphore>
+#include <vector>
+#include <chrono>
+
+using namespace std;
+
+const int kolvo_workers = 5;
+const int ochered_size = 5;
+
+// 2 очереди с задачами
+queue<int> queue1;
+queue<int> queue2;
+
+counting_semaphore<ochered_size> sem1(ochered_size);
+counting_semaphore<ochered_size> sem2(ochered_size);
+mutex mtx1;
+mutex mtx2;
+
+void worker(int id)
+{
+    while (true)
+    {
+        int task = -1; //номер задачи не выбран
+
+        // пытаемся взять задачу из 1ой очреди
+        if (sem1.try_acquire())
+        {
+            lock_guard<mutex> lock(mtx1);
+            if (!queue1.empty()) // не пуста ли очередь
+            {
+                //берем задачу и удаляем ее
+                task = queue1.front();
+                queue1.pop();
+                cout << "Рабочий " << id << " взял задачу " << task << " из очереди 1." << endl;
+            }
+            sem1.release(); //освобождение ресурса
+        }
+        if (task == -1 && sem2.try_acquire())
+        {
+            lock_guard<mutex> lock(mtx2);
+            if (!queue2.empty())
+            {
+                task = queue2.front();
+                queue2.pop();
+                cout << "Рабочий " << id << " взял задачу " << task << " из очереди 2." << endl;
+            }
+            sem2.release();
+        }
+
+        if (task != -1)
+        {
+            cout << "Рабочий " << id << " выполняет задачу " << task << endl;
+            this_thread::sleep_for(chrono::seconds(1));
+            cout << "Рабочий " << id << " завершил задачу " << task << endl;
+
+            // возвращаем задачу после вфполнения наугад в очередь
+            if (rand() % 2 == 0)
+            {
+                lock_guard<mutex> lock(mtx1);
+                queue1.push(task);
+                cout << "Рабочий " << id << " вернул задачу " << task << " в очередь 1." << endl;
+            }
+            else
+            {
+                lock_guard<mutex> lock(mtx2);
+                queue2.push(task);
+                cout << "Рабочий " << id << " вернул задачу " << task << " в очередь 2." << endl;
+            }
+        }
+
+        this_thread::sleep_for(chrono::milliseconds(100)); 
+    }
+}
+
+int main()
+{
+    setlocale(LC_ALL, "");
+    for (int i = 0; i < ochered_size; ++i)
+    {
+        queue1.push(i + 1);
+        queue2.push(i + 6);
+    }
+
+    vector<thread> workers;
+
+    for (int i = 0; i < kolvo_workers; ++i)
+    {
+        workers.emplace_back(worker, i + 1);
+    }
+
+    for (auto& t : workers)
+    {
+        t.join();
+    }
+
+    return 0;
+}
