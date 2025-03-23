@@ -1,0 +1,58 @@
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <vector>
+#include <chrono>
+
+using namespace std;
+
+mutex mtx;
+condition_variable cv;
+atomic<int> current_stage(0); // текущий этап
+const int kolvo = 4; // kolvo steps
+
+
+// один этап обработки
+void process(int stage)
+{
+    while (true)
+    {
+        unique_lock<mutex> lock(mtx);
+
+        while (current_stage.load() != stage) {
+            cv.wait(lock);
+        }
+
+
+        cout << "Этап " << stage + 1 << " выполняется" << endl;
+        this_thread::sleep_for(chrono::seconds(1));
+
+        cout << "Этап " << stage + 1 << " завершён" << endl;
+        current_stage++;
+
+        cv.notify_all();
+        break;
+    }
+}
+
+int main()
+{
+    setlocale(LC_ALL, "");
+    vector<thread> threads;
+
+    // создаем потоки для каждого этапа
+    for (int i = 0; i < kolvo; i++)
+    {
+        threads.push_back(thread(process, i));
+    }
+
+    for (auto& t : threads)
+    {
+        t.join();
+    }
+
+    cout << "Все этапы завершены" << endl;
+    return 0;
+}
